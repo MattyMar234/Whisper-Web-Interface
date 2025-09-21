@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper Transcription Server</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        .queue-item {
+            transition: all 0.3s ease;
+        }
+        .queue-item:hover {
+            transform: translateX(5px);
+        }
+        .status-badge {
+            min-width: 100px;
+        }
+        .transcription-table {
+            font-size: 0.9rem;
+        }
+        .transcription-table th {
+            position: sticky;
+            top: 0;
+            background-color: #fff;
+            z-index: 10;
+        }
+        .file-upload-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+        .file-upload-wrapper input[type=file] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+        .progress-container {
+            height: 5px;
+        }
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+        .card-header {
+            background-color: #f8f9fa;
+        }
+        .queue-status {
+            background-color: #e9ecef;
+            border-radius: 0.375rem;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+        .queue-status h5 {
+            margin-bottom: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <header class="d-flex flex-column flex-md-row align-items-center pb-3 mb-4 border-bottom">
+            <div>
+                <h1 class="h3"><i class="bi bi-mic-fill text-primary"></i> Whisper Transcription Server</h1>
+                <p class="mb-0 text-muted">Trascrivi file audio con Whisper di OpenAI</p>
+            </div>
+            <div class="ms-md-auto">
+                <span class="badge bg-primary">Modello: Medium</span>
+            </div>
+        </header>
+
+        <div class="row mb-4">
+            <div class="col-md-8 mx-auto">
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-upload"></i> Carica File Audio</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <div class="row mb-3">
+                                <div class="col-md-3">
+                                    <label for="model" class="form-label">Modello Whisper</label>
+                                    <select class="form-select" id="model" name="model">
+                                        {% for key, value in models.items() %}
+                                        <option value="{{ key }}">{{ value }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="language" class="form-label">Lingua Audio</label>
+                                    <select class="form-select" id="language" name="language">
+                                        {% for key, value in languages.items() %}
+                                        <option value="{{ key }}">{{ value }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="beam_size" class="form-label">Beam Size</label>
+                                    <select class="form-select" id="beam_size" name="beam_size">
+                                        <option value="0">0</option>
+                                        <option value="1">1</option>
+                                        <option value="2">2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                        <option value="5" selected>5</option>
+                                        <option value="6">6</option>
+                                        <option value="7">7</option>
+                                        <option value="8">8</option>
+                                        <option value="9">9</option>
+                                        <option value="10">10</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="form-check mt-4">
+                                        <input class="form-check-input" type="checkbox" id="vad_filter" name="vad_filter" checked>
+                                        <label class="form-check-label" for="vad_filter">
+                                            Filtro VAD
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="addInfo" name="add_info">
+                                        <label class="form-check-label" for="addInfo">
+                                            Aggiungi informazioni
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="audioFiles" class="form-label">Seleziona File Audio</label>
+                                <div class="file-upload-wrapper">
+                                    <button type="button" class="btn btn-outline-primary w-100">
+                                        <i class="bi bi-file-earmark-music"></i> Scegli file (MP3, WAV, etc.)
+                                    </button>
+                                    <input type="file" id="audioFiles" name="files" multiple accept="audio/*">
+                                </div>
+                                <div class="form-text">Supporta file fino a 4 ore di durata</div>
+                                <div id="fileList" class="mt-2"></div>
+                            </div>
+                            
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-play-circle"></i> Aggiungi alla Coda
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card shadow">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-list-task"></i> Stato Coda di Elaborazione</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="queue-status">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h5><i class="bi bi-activity"></i> Stato Server</h5>
+                                    <p id="serverStatus" class="mb-0">In attesa</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <h5><i class="bi bi-hourglass-split"></i> File in Coda</h5>
+                                    <p id="queueCount" class="mb-0">0</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Nome File</th>
+                                        <th>Lingua</th>
+                                        <th>Modello</th>
+                                        <th>Stato</th>
+                                        <th>Progresso</th>
+                                        <th>Aggiunto</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="queueTableBody">
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-3">Nessun file in coda</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-file-text"></i> Trascrizioni Salvate</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive transcription-table">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Lingua</th>
+                                        <th>Modello</th>
+                                        <th>Stato</th>
+                                        <th>Creazione</th>
+                                        <th>Azioni</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transcriptionsTableBody">
+                                    {% if transcriptions|length == 0 %}
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-3">Nessuna trascrizione disponibile</td>
+                                    </tr>
+                                    {% else %}
+                                    {% for trans in transcriptions %}
+                                    <tr data-id="{{ trans.id }}">
+                                        <td>{{ trans.display_name }}</td>
+                                        <td>{{ trans.language }}</td>
+                                        <td>{{ trans.model }}</td>
+                                        <td>
+                                            <span class="badge {% if trans.status == 'completed' %}bg-success{% else %}bg-warning{% endif %}">
+                                                {% if trans.status == 'completed' %}Completata{% else %}In elaborazione{% endif %}
+                                            </span>
+                                        </td>
+                                        <td>{{ trans.created_at }}</td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary view-btn" title="Visualizza">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                                <button class="btn btn-outline-secondary rename-btn" title="Rinomina">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-outline-success download-btn" title="Scarica">
+                                                    <i class="bi bi-download"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger delete-btn" title="Elimina">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale per visualizzazione trascrizione -->
+    <div class="modal fade" id="viewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Visualizza Trascrizione</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nome File</label>
+                        <p id="viewFilename" class="form-control-plaintext"></p>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Testo Trascritto</label>
+                        <textarea id="viewText" class="form-control" rows="15" readonly></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+                    <button type="button" class="btn btn-primary" id="downloadFromView">
+                        <i class="bi bi-download"></i> Scarica
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale per rinomina -->
+    <div class="modal fade" id="renameModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Rinomina Trascrizione</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="newName" class="form-label">Nuovo Nome</label>
+                        <input type="text" class="form-control" id="newName" placeholder="Inserisci nuovo nome">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="button" class="btn btn-primary" id="confirmRename">Salva</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Container per le notifiche -->
+    <div class="toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Connetti al server SocketIO
+            const socket = io();
+            
+            // Gestione selezione file
+            const fileInput = document.getElementById('audioFiles');
+            const fileList = document.getElementById('fileList');
+            
+            fileInput.addEventListener('change', function() {
+                fileList.innerHTML = '';
+                if (this.files.length > 0) {
+                    const list = document.createElement('ul');
+                    list.className = 'list-group';
+                    
+                    Array.from(this.files).forEach(file => {
+                        const item = document.createElement('li');
+                        item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                        item.innerHTML = `
+                            <div>
+                                <i class="bi bi-file-earmark-music"></i> ${file.name}
+                                <span class="text-muted ms-2">${(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                            </div>
+                        `;
+                        list.appendChild(item);
+                    });
+                    
+                    fileList.appendChild(list);
+                }
+            });
+
+            // Gestione invio form
+            const uploadForm = document.getElementById('uploadForm');
+            
+            uploadForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                if (fileInput.files.length === 0) {
+                    showNotification('Seleziona almeno un file audio', 'warning');
+                    return;
+                }
+                
+                const formData = new FormData(uploadForm);
+                
+                fetch('/transcribe', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Resetta il form
+                        uploadForm.reset();
+                        fileList.innerHTML = '';
+                        
+                        // Mostra notifica di successo
+                        showNotification('File aggiunti alla coda con successo!', 'success');
+                    } else {
+                        showNotification('Errore: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showNotification('Errore di rete: ' + error.message, 'danger');
+                });
+            });
+
+            // Gestione eventi SocketIO
+            socket.on('queue_status', function(data) {
+                updateQueueStatus(data);
+            });
+            
+            socket.on('transcriptions_update', function(data) {
+                updateTranscriptionsTable(data.transcriptions);
+            });
+            
+            // Richiedi lo stato iniziale
+            socket.emit('get_queue_status');
+            socket.emit('get_transcriptions');
+
+            // Funzioni per aggiornare le tabelle
+            function updateQueueStatus(data) {
+                // Aggiorna lo stato del server
+                const serverStatus = document.getElementById('serverStatus');
+                serverStatus.textContent = data.transcriber_status === 'idle' ? 'In attesa' : 
+                                          data.transcriber_status === 'processing' ? 'Elaborazione in corso' : 
+                                          data.transcriber_status === 'error' ? 'Errore' : 'Sconosciuto';
+                
+                // Aggiorna il conteggio della coda
+                document.getElementById('queueCount').textContent = data.queue.length;
+                
+                // Aggiorna la tabella della coda
+                const queueTableBody = document.getElementById('queueTableBody');
+                
+                if (data.queue.length === 0) {
+                    queueTableBody.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-3">Nessun file in coda</td>
+                        </tr>
+                    `;
+                } else {
+                    queueTableBody.innerHTML = '';
+                    
+                    data.queue.forEach(item => {
+                        const row = document.createElement('tr');
+                        row.className = 'queue-item';
+                        
+                        let statusBadge = '';
+                        if (item.status === 'pending') {
+                            statusBadge = '<span class="badge bg-warning">In attesa</span>';
+                        } else if (item.status === 'processing') {
+                            statusBadge = '<span class="badge bg-primary">In elaborazione</span>';
+                        } else if (item.status === 'completed') {
+                            statusBadge = '<span class="badge bg-success">Completato</span>';
+                        } else if (item.status === 'error') {
+                            statusBadge = '<span class="badge bg-danger">Errore</span>';
+                        }
+                        
+                        row.innerHTML = `
+                            <td>${item.filename}</td>
+                            <td>${item.language === 'auto' ? 'Automatica' : item.language}</td>
+                            <td>${item.model}</td>
+                            <td class="status-badge">${statusBadge}</td>
+                            <td>
+                                <div class="progress-container">
+                                    <div class="progress" style="height: 5px;">
+                                        <div class="progress-bar" role="progressbar" style="width: ${item.progress}%;"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>${item.created_at}</td>
+                        `;
+                        
+                        queueTableBody.appendChild(row);
+                    });
+                }
+            }
+            
+            function updateTranscriptionsTable(transcriptions) {
+                const transcriptionsTableBody = document.getElementById('transcriptionsTableBody');
+                
+                if (transcriptions.length === 0) {
+                    transcriptionsTableBody.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-3">Nessuna trascrizione disponibile</td>
+                        </tr>
+                    `;
+                } else {
+                    transcriptionsTableBody.innerHTML = '';
+                    
+                    transcriptions.forEach(trans => {
+                        const row = document.createElement('tr');
+                        row.setAttribute('data-id', trans.id);
+                        
+                        let statusBadge = '';
+                        if (trans.status === 'completed') {
+                            statusBadge = '<span class="badge bg-success">Completata</span>';
+                        } else {
+                            statusBadge = '<span class="badge bg-warning">In elaborazione</span>';
+                        }
+                        
+                        row.innerHTML = `
+                            <td>${trans.display_name}</td>
+                            <td>${trans.language}</td>
+                            <td>${trans.model}</td>
+                            <td>${statusBadge}</td>
+                            <td>${trans.created_at}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary view-btn" title="Visualizza">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary rename-btn" title="Rinomina">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-success download-btn" title="Scarica">
+                                        <i class="bi bi-download"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger delete-btn" title="Elimina">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        
+                        transcriptionsTableBody.appendChild(row);
+                    });
+                    
+                    // Aggiungi event listener ai pulsanti
+                    addTableEventListeners();
+                }
+            }
+            
+            // Aggiungi event listener ai pulsanti della tabella
+            function addTableEventListeners() {
+                // Pulsanti di visualizzazione
+                document.querySelectorAll('.view-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const row = this.closest('tr');
+                        const transId = row.getAttribute('data-id');
+                        
+                        fetch(`/transcription/${transId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.error) {
+                                showNotification(data.error, 'danger');
+                            } else {
+                                document.getElementById('viewFilename').textContent = data.display_name;
+                                document.getElementById('viewText').value = data.text;
+                                document.getElementById('downloadFromView').setAttribute('data-id', transId);
+                                
+                                const modal = new bootstrap.Modal(document.getElementById('viewModal'));
+                                modal.show();
+                            }
+                        })
+                        .catch(error => {
+                            showNotification('Errore: ' + error.message, 'danger');
+                        });
+                    });
+                });
+
+                // Pulsanti di download
+                document.querySelectorAll('.download-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const row = this.closest('tr');
+                        const transId = row.getAttribute('data-id');
+                        window.open(`/transcription/${transId}/download`, '_blank');
+                    });
+                });
+
+                // Pulsanti di rinomina
+                document.querySelectorAll('.rename-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const row = this.closest('tr');
+                        const transId = row.getAttribute('data-id');
+                        const currentName = row.cells[0].textContent;
+                        
+                        document.getElementById('newName').value = currentName;
+                        document.getElementById('confirmRename').setAttribute('data-id', transId);
+                        
+                        const modal = new bootstrap.Modal(document.getElementById('renameModal'));
+                        modal.show();
+                    });
+                });
+
+                // Pulsanti di eliminazione
+                document.querySelectorAll('.delete-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const row = this.closest('tr');
+                        const transId = row.getAttribute('data-id');
+                        
+                        if (confirm('Sei sicuro di voler eliminare questa trascrizione?')) {
+                            fetch(`/transcription/${transId}`, {
+                                method: 'DELETE'
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    showNotification('Trascrizione eliminata con successo', 'success');
+                                } else {
+                                    showNotification('Errore durante l\'eliminazione: ' + data.error, 'danger');
+                                }
+                            })
+                            .catch(error => {
+                                showNotification('Errore di rete: ' + error.message, 'danger');
+                            });
+                        }
+                    });
+                });
+            }
+
+            // Conferma rinomina
+            document.getElementById('confirmRename').addEventListener('click', function() {
+                const transId = this.getAttribute('data-id');
+                const newName = document.getElementById('newName').value.trim();
+                
+                if (!newName) {
+                    showNotification('Inserisci un nome valido', 'warning');
+                    return;
+                }
+                
+                fetch(`/transcription/${transId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ display_name: newName })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Chiudi la modale
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('renameModal'));
+                        modal.hide();
+                        
+                        showNotification('Trascrizione rinominata con successo', 'success');
+                    } else {
+                        showNotification('Errore durante la rinomina: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showNotification('Errore di rete: ' + error.message, 'danger');
+                });
+            });
+
+            // Download dalla modale di visualizzazione
+            document.getElementById('downloadFromView').addEventListener('click', function() {
+                const transId = this.getAttribute('data-id');
+                window.open(`/transcription/${transId}/download`, '_blank');
+            });
+
+            // Funzione per mostrare notifiche
+            function showNotification(message, type) {
+                const toast = document.createElement('div');
+                toast.className = `toast align-items-center text-white bg-${type} border-0`;
+                toast.setAttribute('role', 'alert');
+                toast.innerHTML = `
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            ${message}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                `;
+                
+                const container = document.querySelector('.toast-container');
+                container.appendChild(toast);
+                
+                const bsToast = new bootstrap.Toast(toast);
+                bsToast.show();
+                
+                toast.addEventListener('hidden.bs.toast', () => {
+                    toast.remove();
+                });
+            }
+        });
+    </script>
+</body>
+</html>

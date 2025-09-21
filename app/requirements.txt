@@ -1,0 +1,6 @@
+flask
+flask_socketio
+openai-whisper
+librosa
+#transformers 
+faster_whisper
