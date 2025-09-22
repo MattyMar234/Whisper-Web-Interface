@@ -6,13 +6,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV WHISPER_MODEL=medium
 
 # Installa dipendenze di sistema
-RUN apt-get update && apt-get install -y \
-    openssh-server 
-    ffmpeg \
-    wget \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update 
+RUN apt-get install -y openssh-server
+RUN apt-get install -y ffmpeg
+RUN apt-get install -y wget
+RUN apt-get install -y curl
+#RUN apt-get install -y git
+RUN rm -rf /var/lib/apt/lists/*
 
 # Configura SSH
 RUN mkdir -p /var/run/sshd
