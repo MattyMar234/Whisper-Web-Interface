@@ -156,16 +156,18 @@ class WebServer:
             if item is not None and isinstance(item, QueueItem):
                 try:
                     # Processa il file
+                    print("HERE1")
                     self._transcriptions[item.id] = self._Transcriber.transcribe(
                         item, updateFunc=lambda: self._send_queue_status()
                     )
-    
+                    print("HERE2")
                     self._send_transcriptions()
-    
+                    print("HERE3")
                     # Aggiorna lo stato della coda
                     item.status = "completed"
                     item.progress = 100
                     self._send_queue_status()
+                    print("HERE4")
                 
                 except Exception as e:
                     logger.error(f"Errore nell'elaborazione del file {item.filename}: {str(e)}")

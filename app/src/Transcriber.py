@@ -168,11 +168,6 @@ class Transcriber:
             )
             
             
-                
-                
-              
-    
-            
             with self.lock:
                 segments, info = model.transcribe(
                     item.file_path,
@@ -182,10 +177,10 @@ class Transcriber:
                     vad_filter=item.vad_filter,
                     vad_parameters=item.vad_parameters,
                     temperature=[item.temperature],
-                    best_of=item.best_of,
+                    # best_of=item.best_of,
                     compression_ratio_threshold=item.compression_ratio_threshold,
                     no_repeat_ngram_size=item.no_repeat_ngram_size,
-                    patience=item.patience if item.patience is not None else 1,
+                    # patience=item.patience if item.patience is not None else 1,
                 )
             #print(f"Detected language '{info.language}' with probability {info.language_probability:.2f}")
             # Passa il parametro della lingua solo se è specificato e non è "none"
