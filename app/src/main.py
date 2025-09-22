@@ -71,7 +71,7 @@ class WebServer:
         self._socketio.on('get_queue_status')(self._send_queue_status)
         self._socketio.on('get_transcriptions')(self._send_transcriptions)
         
-        self._socketio.run(self._app, host=host, port=port, debug=True)
+        self._socketio.run(self._app, host=host, port=port, debug=True, allow_unsafe_werkzeug=True)
     
     def remove_from_queue(self, item_id):
         with self._queueLock:
