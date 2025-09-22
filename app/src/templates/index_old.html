@@ -66,23 +66,6 @@
             flex-direction: column;
             gap: 10px;
         }
-        .advanced-options {
-            background-color: #f8f9fa;
-            border-radius: 0.375rem;
-            padding: 15px;
-            margin-top: 15px;
-        }
-        .advanced-options h6 {
-            margin-bottom: 15px;
-            color: #495057;
-        }
-        .form-label {
-            font-weight: 500;
-            margin-bottom: 0.25rem;
-        }
-        .form-text {
-            font-size: 0.8rem;
-        }
     </style>
 </head>
 <body>
@@ -168,53 +151,6 @@
                                 <div id="fileList" class="mt-2"></div>
                             </div>
                             
-                            <!-- Opzioni Avanzate -->
-                            <div class="advanced-options">
-                                <h6><i class="bi bi-gear"></i> Opzioni Avanzate</h6>
-                                
-                                <div class="row mb-3">
-                                    <div class="col-md-4">
-                                        <label for="temperature" class="form-label">Temperature</label>
-                                        <input type="number" class="form-control" id="temperature" name="temperature" 
-                                               step="0.1" min="0" max="1.0" value="0.0">
-                                        <div class="form-text">Valore: 0.0 - 1.0 (default: 0.0)</div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label for="best_of" class="form-label">Best Of</label>
-                                        <input type="number" class="form-control" id="best_of" name="best_of" 
-                                               min="1" max="10" value="5">
-                                        <div class="form-text">Numero di campioni (default: 5)</div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label for="compression_ratio_threshold" class="form-label">Compression Ratio</label>
-                                        <input type="number" class="form-control" id="compression_ratio_threshold" 
-                                               name="compression_ratio_threshold" step="0.1" min="1.0" max="5.0" value="2.4">
-                                        <div class="form-text">Soglia compressione (default: 2.4)</div>
-                                    </div>
-                                </div>
-                                
-                                <div class="row mb-3">
-                                    <div class="col-md-4">
-                                        <label for="no_repeat_ngram_size" class="form-label">No Repeat Ngram</label>
-                                        <input type="number" class="form-control" id="no_repeat_ngram_size" 
-                                               name="no_repeat_ngram_size" min="0" max="10" value="0">
-                                        <div class="form-text">Previeni ripetizioni (default: 0)</div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label for="vad_min_silence" class="form-label">VAD Min Silence (ms)</label>
-                                        <input type="number" class="form-control" id="vad_min_silence" 
-                                               name="vad_min_silence" min="0" max="5000" value="1000">
-                                        <div class="form-text">Durata minima silenzio (default: 1000ms)</div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label for="patience" class="form-label">Patience</label>
-                                        <input type="number" class="form-control" id="patience" name="patience" 
-                                               step="0.1" min="0" max="2.0" value="">
-                                        <div class="form-text">Pazienza decoding (default: vuoto)</div>
-                                    </div>
-                                </div>
-                            </div>
-                            
                             <div class="d-grid">
                                 <button type="submit" class="btn btn-primary">
                                     <i class="bi bi-play-circle"></i> Aggiungi alla Coda
@@ -256,12 +192,11 @@
                                         <th>Stato</th>
                                         <th>Progresso</th>
                                         <th>Aggiunto</th>
-                                        <th>Azioni</th>
                                     </tr>
                                 </thead>
                                 <tbody id="queueTableBody">
                                     <tr>
-                                        <td colspan="7" class="text-center text-muted py-3">Nessun file in coda</td>
+                                        <td colspan="6" class="text-center text-muted py-3">Nessun file in coda</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -439,12 +374,6 @@
                         uploadForm.reset();
                         document.getElementById('vad_filter').checked = true;
                         document.getElementById('addInfo').checked = false;
-                        document.getElementById('temperature').value = '0.0';
-                        document.getElementById('best_of').value = '5';
-                        document.getElementById('compression_ratio_threshold').value = '2.4';
-                        document.getElementById('no_repeat_ngram_size').value = '0';
-                        document.getElementById('vad_min_silence').value = '1000';
-                        document.getElementById('patience').value = '';
                         fileList.innerHTML = '';
                         
                         // Mostra notifica di successo
@@ -488,7 +417,7 @@
                 if (data.queue.length === 0) {
                     queueTableBody.innerHTML = `
                         <tr>
-                            <td colspan="7" class="text-center text-muted py-3">Nessun file in coda</td>
+                            <td colspan="6" class="text-center text-muted py-3">Nessun file in coda</td>
                         </tr>
                     `;
                 } else {
@@ -497,7 +426,6 @@
                     data.queue.forEach(item => {
                         const row = document.createElement('tr');
                         row.className = 'queue-item';
-                        row.setAttribute('data-id', item.id);
                         
                         let statusBadge = '';
                         if (item.status === 'pending') {
@@ -508,15 +436,6 @@
                             statusBadge = '<span class="badge bg-success">Completato</span>';
                         } else if (item.status === 'error') {
                             statusBadge = '<span class="badge bg-danger">Errore</span>';
-                        }
-                        
-                        let actionButtons = '';
-                        if (item.status === 'pending') {
-                            actionButtons = `
-                                <button class="btn btn-outline-danger btn-sm remove-queue-btn" title="Rimuovi dalla coda">
-                                    <i class="bi bi-x-circle"></i>
-                                </button>
-                            `;
                         }
                         
                         row.innerHTML = `
@@ -532,14 +451,10 @@
                                 </div>
                             </td>
                             <td>${item.created_at}</td>
-                            <td>${actionButtons}</td>
                         `;
                         
                         queueTableBody.appendChild(row);
                     });
-                    
-                    // Aggiungi event listener ai pulsanti di rimozione
-                    addQueueRemoveEventListeners();
                 }
             }
             
@@ -588,33 +503,6 @@
                     // Aggiungi event listener ai pulsanti
                     addTableEventListeners();
                 }
-            }
-            
-            // Aggiungi event listener ai pulsanti di rimozione dalla coda
-            function addQueueRemoveEventListeners() {
-                document.querySelectorAll('.remove-queue-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        const row = this.closest('tr');
-                        const itemId = row.getAttribute('data-id');
-                        
-                        if (confirm('Sei sicuro di voler rimuovere questo file dalla coda?')) {
-                            fetch(`/queue/${itemId}`, {
-                                method: 'DELETE'
-                            })
-                            .then(response => response.json())
-                            .then(data => {
-                                if (data.success) {
-                                    showNotification('Elemento rimosso dalla coda con successo', 'success');
-                                } else {
-                                    showNotification('Errore durante la rimozione: ' + data.error, 'danger');
-                                }
-                            })
-                            .catch(error => {
-                                showNotification('Errore di rete: ' + error.message, 'danger');
-                            });
-                        }
-                    });
-                });
             }
             
             // Aggiungi event listener ai pulsanti della tabella
