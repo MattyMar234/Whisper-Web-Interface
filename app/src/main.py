@@ -297,7 +297,7 @@ class WebServer:
                             patience=patience
                         )
                         
-                        logger.info(f"{'='*40}\nAggiunto alla coda:\n {item}\n{'='*40}")
+                        logger.info(f"\n{'='*80}\nAggiunto alla coda:\n {item}\n{'='*80}")
                         
                         self._queue.append(item)
                         results.append({
