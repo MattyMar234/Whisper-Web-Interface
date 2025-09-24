@@ -30,7 +30,7 @@ class WebServer:
         
         self._modelName = 'small'
         
-        self._Transcriber = Transcriber(model_name=self._modelName)
+        self._Transcriber = Transcriber()
         
         #queue per l'elaborazione in background
         self._queueLock = threading.Lock()
