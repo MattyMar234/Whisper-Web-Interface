@@ -110,9 +110,9 @@ class QueueItem:
 
 
 class Transcriber:
-    def __init__(self, model_name='small', callback: Callable | None = None):
-        self.model_name = model_name
-        self.model = whisper.load_model(model_name)
+    def __init__(self, callback: Callable | None = None):
+        #self.model_name = model_name
+        #self.model = whisper.load_model(model_name)
         self.current_status = "idle"
         self.current_file = None
         self.lock = threading.Lock()
