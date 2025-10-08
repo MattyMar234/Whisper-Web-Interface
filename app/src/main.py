@@ -392,7 +392,8 @@ class WebServer:
                 return send_file(
                     trans.file_path,
                     as_attachment=True,
-                    download_name=f"{trans.file_path.split("/")[-1]}",#f"{trans.display_name}.txt",
+                    #download_name=f"{trans.file_path.split("/")[-1]}",#f"{trans.display_name}.txt",
+                    download_name=f"{trans.get_download_name()}",
                     mimetype='text/plain'
                 )
             except Exception as e:

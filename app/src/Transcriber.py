@@ -51,7 +51,10 @@ class Transcription:
     def generate_file_path(self) -> str:
         safe_display_name = self.display_name.replace(']', '').replace('[', '')
         return os.path.join(self.folder, f"[{self.id}]-[{self.created_at}]-[{self.language}]-[{self.model}]-[{safe_display_name}].txt")
-        
+    
+    def get_download_name(self) -> str:
+        safe_display_name = self.display_name.replace(']', '').replace('[', '')
+        return f"[{safe_display_name}]-[{self.created_at}]-[{self.language}]-[{self.model}].txt" 
     
     def rename(self, new_display_name):
         self.display_name = new_display_name
