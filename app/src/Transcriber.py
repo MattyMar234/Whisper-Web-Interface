@@ -29,7 +29,13 @@ class Transcription:
     def load_transcriptions(folder:str) -> list:
         transcriptions = []
         
-        for file in os.listdir(folder):
+        files = os.listdir(folder)
+        files.sort(key=str.lower)
+        
+        if files is None:
+            return transcriptions
+        
+        for file in files:
             if file.endswith(".txt"):
                 elements = [e.replace(']', '').replace('[', '') for e in file.split("]-[")]
                 elements[-1] = ''.join(elements[-1].split(".txt")[0:-1])
@@ -46,7 +52,7 @@ class Transcription:
                     transcriptions.append(transcription)
                 
     
-        return sorted(transcriptions)
+        return transcriptions
     
     def generate_file_path(self) -> str:
         safe_display_name = self.display_name.replace(']', '').replace('[', '')
