@@ -46,7 +46,7 @@ class Transcription:
                     transcriptions.append(transcription)
                 
     
-        return transcriptions
+        return sorted(transcriptions)
     
     def generate_file_path(self) -> str:
         safe_display_name = self.display_name.replace(']', '').replace('[', '')
