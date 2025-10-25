@@ -83,6 +83,24 @@
         .form-text {
             font-size: 0.8rem;
         }
+        .gpu-status {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            line-height: 1;
+            color: #fff;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: 0.25rem;
+        }
+        .gpu-available {
+            background-color: #198754;
+        }
+        .gpu-unavailable {
+            background-color: #dc3545;
+        }
     </style>
 </head>
 <body>
@@ -93,7 +111,8 @@
                 <p class="mb-0 text-muted">Trascrivi file audio con Whisper di OpenAI</p>
             </div>
             <div class="ms-md-auto">
-                <span class="badge bg-primary">Modello: Medium</span>
+                <!-- <span class="badge bg-primary">Modello: Medium</span> -->
+                <span id="gpuStatus" class="gpu-status">GPU: Verifica...</span>
             </div>
         </header>
 
@@ -235,13 +254,21 @@
                     <div class="card-body">
                         <div class="queue-status">
                             <div class="row">
-                                <div class="col-md-6">
+                                <div class="col-md-3">
                                     <h5><i class="bi bi-activity"></i> Stato Server</h5>
                                     <p id="serverStatus" class="mb-0">In attesa</p>
                                 </div>
-                                <div class="col-md-6">
+                                <div class="col-md-3">
                                     <h5><i class="bi bi-hourglass-split"></i> File in Coda</h5>
                                     <p id="queueCount" class="mb-0">0</p>
+                                </div>
+                                <div class="col-md-3">
+                                    <h5><i class="bi bi-cpu"></i> Device</h5>
+                                    <p id="currentDevice" class="mb-0">-</p>
+                                </div>
+                                <div class="col-md-3">
+                                    <h5><i class="bi bi-file-text"></i> File Corrente</h5>
+                                    <p id="currentFile" class="mb-0">-</p>
                                 </div>
                             </div>
                         </div>
@@ -285,6 +312,7 @@
                                         <th>Nome</th>
                                         <th>Lingua</th>
                                         <th>Modello</th>
+                                        <th>Temperatura</th>
                                         <th>Creazione</th>
                                         <th>Azioni</th>
                                     </tr>
@@ -292,7 +320,7 @@
                                 <tbody id="transcriptionsTableBody">
                                     {% if transcriptions|length == 0 %}
                                     <tr>
-                                        <td colspan="5" class="text-center text-muted py-3">Nessuna trascrizione disponibile</td>
+                                        <td colspan="6" class="text-center text-muted py-3">Nessuna trascrizione disponibile</td>
                                     </tr>
                                     {% else %}
                                     {% for trans in transcriptions %}
@@ -300,6 +328,7 @@
                                         <td>{{ trans.display_name }}</td>
                                         <td>{{ trans.language }}</td>
                                         <td>{{ trans.model }}</td>
+                                        <td>{{ trans.temperature }}</td>
                                         <td>{{ trans.created_at }}</td>
                                         <td>
                                             <div class="btn-group btn-group-sm">
@@ -386,6 +415,16 @@
     <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Imposta lo stato della GPU all'avvio
+            const gpuStatus = document.getElementById('gpuStatus');
+            {% if gpu_available %}
+            gpuStatus.textContent = 'GPU: Disponibile';
+            gpuStatus.className = 'gpu-status gpu-available';
+            {% else %}
+            gpuStatus.textContent = 'GPU: Non disponibile';
+            gpuStatus.className = 'gpu-status gpu-unavailable';
+            {% endif %}
+            
             // Connetti al server SocketIO
             const socket = io();
             
@@ -435,17 +474,9 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // Resetta il form mantenendo i valori di default dei checkbox
-                        uploadForm.reset();
-                        document.getElementById('vad_filter').checked = true;
-                        document.getElementById('addInfo').checked = false;
-                        document.getElementById('temperature').value = '0.0';
-                        document.getElementById('best_of').value = '5';
-                        document.getElementById('compression_ratio_threshold').value = '2.4';
-                        document.getElementById('no_repeat_ngram_size').value = '0';
-                        document.getElementById('vad_min_silence').value = '1000';
-                        document.getElementById('patience').value = '';
+                        // Resetta solo la lista dei file, non i parametri
                         fileList.innerHTML = '';
+                        fileInput.value = ''
                         
                         // Mostra notifica di successo
                         showNotification('File aggiunti alla coda con successo!', 'success');
@@ -482,6 +513,22 @@
                 // Aggiorna il conteggio della coda
                 document.getElementById('queueCount').textContent = data.queue.length;
                 
+                // Aggiorna il device corrente
+                const currentDevice = document.getElementById('currentDevice');
+                if (data.current_device) {
+                    currentDevice.textContent = data.current_device.toUpperCase();
+                } else {
+                    currentDevice.textContent = '-';
+                }
+                
+                // Aggiorna il file corrente
+                const currentFile = document.getElementById('currentFile');
+                if (data.current_file) {
+                    currentFile.textContent = data.current_file;
+                } else {
+                    currentFile.textContent = '-';
+                }
+                
                 // Aggiorna la tabella della coda
                 const queueTableBody = document.getElementById('queueTableBody');
                 
@@ -517,6 +564,13 @@
                                     <i class="bi bi-x-circle"></i>
                                 </button>
                             `;
+                        } else if (item.status === 'processing') {
+                            // AGGIUNGI QUESTO BLOCCO
+                            actionButtons = `
+                                <button class="btn btn-outline-danger btn-sm stop-queue-btn" title="Ferma e Rimuovi">
+                                    <i class="bi bi-stop-circle"></i>
+                                </button>
+                            `;
                         }
                         
                         row.innerHTML = `
@@ -540,7 +594,35 @@
                     
                     // Aggiungi event listener ai pulsanti di rimozione
                     addQueueRemoveEventListeners();
+                    addQueueStopEventListeners(); // <--- AGGIUNGI QUESTA CHIAMATA
                 }
+            }
+
+            // Aggiungi event listener ai pulsanti di stop dalla coda
+            function addQueueStopEventListeners() {
+                document.querySelectorAll('.stop-queue-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const row = this.closest('tr');
+                        const itemId = row.getAttribute('data-id');
+                        
+                        if (confirm('Sei sicuro di voler fermare e rimuovere questa trascrizione?')) {
+                            fetch(`/queue/${itemId}/stop`, {
+                                method: 'DELETE'
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    showNotification('Trascrizione fermata e rimossa con successo', 'success');
+                                } else {
+                                    showNotification('Errore: ' + data.error, 'danger');
+                                }
+                            })
+                            .catch(error => {
+                                showNotification('Errore di rete: ' + error.message, 'danger');
+                            });
+                        }
+                    });
+                });
             }
             
             function updateTranscriptionsTable(transcriptions) {
@@ -549,7 +631,7 @@
                 if (transcriptions.length === 0) {
                     transcriptionsTableBody.innerHTML = `
                         <tr>
-                            <td colspan="5" class="text-center text-muted py-3">Nessuna trascrizione disponibile</td>
+                            <td colspan="6" class="text-center text-muted py-3">Nessuna trascrizione disponibile</td>
                         </tr>
                     `;
                 } else {
@@ -563,6 +645,7 @@
                             <td>${trans.display_name}</td>
                             <td>${trans.language}</td>
                             <td>${trans.model}</td>
+                            <td>${trans.temperature || '?'}</td>
                             <td>${trans.created_at}</td>
                             <td>
                                 <div class="btn-group btn-group-sm">

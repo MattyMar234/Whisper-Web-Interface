@@ -30,17 +30,17 @@ class WebServer:
         
         self._modelName = 'small'
         
-        self._Transcriber = Transcriber()
         
         #queue per l'elaborazione in background
         self._queueLock = threading.Lock()
         self._queue: List[QueueItem] = []
-        self._maxQueue = 5
+        self._maxQueue = 20
         
         # Avvia il thread di elaborazione
         self._processing_thread = threading.Thread(target=self._process_queue, daemon=True)
         self._processing_thread.start()
         
+        self._Transcriber = Transcriber()
         
         # Memoria delle trascrizioni
         self._transcriptions = {t.id: t for t in Transcription.load_transcriptions(TRANSCRIPTIONS_DIR)}
@@ -52,7 +52,6 @@ class WebServer:
         
         self._app: Flask = Flask(__name__)
         self._app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
-        
         self._socketio = SocketIO(self._app, cors_allowed_origins="*")
         
         self._app.route('/', methods=['GET'])(self.index)
@@ -64,7 +63,7 @@ class WebServer:
         self._app.route('/transcription/<trans_id>/download', methods=['GET'])(self.download_transcription)
         self._app.route('/health', methods=['GET'])(self.health_check)
         self._app.route('/queue/<item_id>', methods=['DELETE'])(self.remove_from_queue)
-        
+        self._app.route('/queue/<item_id>/stop', methods=['DELETE'])(self.stop_and_remove_from_queue)
         # Eventi SocketIO
         self._socketio.on('connect')(self._handle_connect)
         self._socketio.on('disconnect')(self._handle_disconnect)
@@ -74,26 +73,57 @@ class WebServer:
         self._socketio.run(self._app, host=host, port=port, debug=True, allow_unsafe_werkzeug=True)
     
     def remove_from_queue(self, item_id):
+        logger.info(f"removing item {item_id} from queue")
+        found: bool = False
+        
         with self._queueLock:
             # Cerca l'elemento nella coda
             for i, item in enumerate(self._queue):
                 if item.id == item_id and item.status == "pending":
-                    # Rimuovi il file temporaneo se esiste
-                    try:
-                        os.remove(item.file_path)
+                    
+                    found = True
+                    self._queue.pop(i)
+                    try:  
+                        os.remove(item.file_path) 
                     except:
                         pass
-                    
-                    # Rimuovi l'elemento dalla coda
-                    self._queue.pop(i)
-                    
-                    # Notifica i client
-                    self._send_queue_status()
-                    
-                    return jsonify({"success": True})
+
+        if found:            
+            # Notifica i client
+            self._send_queue_status()
+            print("updated")
             
-            return jsonify({"error": "Elemento non trovato nella coda"}), 404
-    
+            return jsonify({"success": True})
+        return jsonify({"error": "Elemento non trovato nella coda o già in elaborazione"}), 404
+
+
+    def stop_and_remove_from_queue(self, item_id):
+        with self._queueLock:
+            # Cerca l'elemento nella coda che è in fase di elaborazione
+            item_to_stop = None
+            item_index = -1
+            for i, item in enumerate(self._queue):
+                if item.id == item_id and item.status == "processing":
+                    item_to_stop = item
+                    item_index = i
+                    break
+            
+        if item_to_stop:
+            # Ferma l'elaborazione
+            self._Transcriber.stop_transcription()
+            
+            # Rimuovi il file temporaneo se esiste
+            with self._queueLock:
+                self._queue.pop(item_index)
+                try:
+                    os.remove(item_to_stop.file_path)
+                except:
+                    pass
+            
+            self._send_queue_status()
+            return jsonify({"success": True})
+        
+        return jsonify({"error": "Elemento non trovato o non in elaborazione"}), 404
     
     def _handle_connect(self):
         logger.info("Client connesso")
@@ -107,10 +137,17 @@ class WebServer:
         with self._queueLock:
             queue_status = [item.to_dict() for item in self._queue]
         
+        # Ottieni informazioni sul device corrente
+        current_device = self._Transcriber.get_current_device()
+        if current_device is None:
+            current_device = "None"
+        
         self._socketio.emit('queue_status', {
             'queue': queue_status,
-            'transcriber_status': self._Transcriber.current_status,
-            'current_file': self._Transcriber.current_file
+            'transcriber_status': self._Transcriber.getCurrentStatus(),
+            'current_file': self._Transcriber.getCurrentFile(),
+            'current_device': current_device,
+            'gpu_available': torch.cuda.is_available()
         })
         
     def _send_transcriptions(self):
@@ -147,7 +184,6 @@ class WebServer:
                         continue
                     
                     item.status = "processing"
-                    self._Transcriber.current_file = item.filename
                 else:
                     continue
             
@@ -158,20 +194,25 @@ class WebServer:
                     # Processa il file
                     
                     self._transcriptions[item.id] = self._Transcriber.transcribe(
-                        item, updateFunc=lambda: self._send_queue_status()
+                        self._queueLock, item, updateFunc=lambda: self._send_queue_status()
                     )
                     
                     self._send_transcriptions()
                     
                     # Aggiorna lo stato della coda
-                    item.status = "completed"
-                    item.progress = 100
+                    with self._queueLock:
+                        item.status = "completed"
+                        item.progress = 100
+                        
                     self._send_queue_status()
                     
                 
                 except Exception as e:
                     logger.error(f"Errore nell'elaborazione del file {item.filename}: {str(e)}")
-                    item.status = "error"
+                    
+                    with self._queueLock:
+                        item.status = "error"
+                        
                     self._send_queue_status()
                 
                 # Rimuovi il file temporaneo
@@ -180,12 +221,12 @@ class WebServer:
                 except:
                     pass
                 
-                self._Transcriber.current_file = None
-                self._Transcriber.current_status = "idle"
+         
                 self._send_queue_status()
             
             else:
-                item.status = "error"
+                with self._queueLock:
+                    item.status = "error"
                 self._send_queue_status()
             
             threading.Thread(target=self.delayed_item_removal, args=(item, 60), daemon=True).start()
@@ -365,7 +406,8 @@ class WebServer:
             'index.html', 
             languages=SUPPORTED_LANGUAGES,
             models=SUPPORTED_MODELS,
-            transcriptions= [t.to_dict() for t in self._transcriptions.values()] 
+            transcriptions= [t.to_dict() for t in self._transcriptions.values()],
+            gpu_available=torch.cuda.is_available()
         )
 
     def delete_transcription(self, trans_id):
