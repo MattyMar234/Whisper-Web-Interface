@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -445,12 +446,22 @@ class WebServer:
         
     def health_check(self):
         return jsonify({"status": "healthy", "model": self._modelName})
- 
+
+
+def restart_program():
+    logger.info("♻️ Riavvio del programma con la nuova versione...")
+    python = sys.executable
+    os.execv(python, [python] + sys.argv)
 
 def main():
+    
     wb = WebServer()
 
 
-
 if __name__ == "__main__":
-    main()
+    from updateChecker import auto_update
+    
+    if auto_update("."):
+        restart_program()
+    else:
+        main()
